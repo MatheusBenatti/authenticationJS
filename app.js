@@ -13,25 +13,51 @@ app.get('/', (req, res) => {
     res.status(200).json({msg: "Welcome"})
 })
 
+app.get('/user/:id', checkToken, async (req, res) => {
+    const id = req.params.id
+    try{
+        const user = await User.findById(id, '-password')
+        res.status(200).json({user})
+    }catch(error){
+        console.log(error)
+        return res.status(404).json({msg: 'User not found'})
+    }
+})
+
+function checkToken(req, res, next){
+    const authHeader = req.headers['authorization']
+    const token = authHeader && authHeader.split(" ")[1]
+    if(!token){
+        return res.status(401).json({msg: 'access denied'})
+    }
+    try{
+        const secret = process.env.SECRET
+        jwt.verify(token, secret)
+        next()
+    }catch(error){
+        res.status(400)
+    }
+}
+
 app.post('/auth/register', async (req,res) => {
     const {name, email, password, confirmpassword} = req.body
 
     if(!name){
-        return res.status(422).json({msg: 'name is required'})
+        return res.status(422).json({msg: 'Name is required'})
     }
     if(!email){
-        return res.status(422).json({msg: 'email is required'})
+        return res.status(422).json({msg: 'Email is required'})
     }
     if(!password){
-        return res.status(422).json({msg: 'password is required'})
+        return res.status(422).json({msg: 'Password is required'})
     }
     if(password !== confirmpassword){
-        return res.status(422).json({msg: 'passwords do not match'})
+        return res.status(422).json({msg: 'Passwords do not match'})
     }
     
     const userExists = await User.findOne({email: email})
     if(userExists){
-        return res.status(422).json({msg: 'user already exists'})
+        return res.status(422).json({msg: 'User already exists'})
     }
     
     const salt = await bcrypt.genSalt(12)
@@ -45,13 +71,53 @@ app.post('/auth/register', async (req,res) => {
 
     try{
         await user.save()
-        res.status(201).json({msg: 'user created successfully'})
+        res.status(201).json({msg: 'User created successfully'})
     
     } catch(error){
         console.log(error)
     
-        res.status(500).json({msg:'server error'})
+        res.status(500).json({msg:'Server error'})
     }
+})
+
+app.post('/auth/login', async (req, res) => {
+    const { email, password} = req.body
+
+    if(!email){
+        return res.status(422).json({msg: 'Email is required'})
+    }
+    if(!password){
+        return res.status(422).json({msg: 'Password is required'})
+    }
+
+    const user = await User.findOne({email: email})
+    if(!user){
+        return res.status(404).json({msg: 'User not exists'})
+    }
+
+    const checkpassword = await bcrypt.compare(password, user.password)
+    if(!checkpassword){
+        return res.status(422).json({msg: 'Password invalid'})
+    }
+
+    try{
+
+        const secret = process.env.SECRET
+        const token = jwt.sign(
+            {
+            id: user._id,
+            },
+            secret,
+        )
+
+    res.status(200).json({msg: 'authentication successful', token})
+    }catch{
+        console.log(error)
+    
+        res.status(500).json({msg:'Server error'})
+    }
+
+
 })
 
 const dbUser = process.env.DB_USER
